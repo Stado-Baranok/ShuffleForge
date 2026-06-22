@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+# shuffle.py - Перемешиватель списков на Python
+"""
+Поддерживает: 3 алгоритма, seed, экспорт/импорт, статистику.
+"""
+import sys
+import json
+import csv
+import random
+import argparse
+from typing import List, Any, Tuple, Optional
+from collections import Counter
+import math
+
+# ========== АЛГОРИТМЫ ПЕРЕМЕШИВАНИЯ ==========
+def fisher_yates_shuffle(arr: List[Any], rng: random.Random) -> List[Any]:
+    """Алгоритм Фишера-Йетса (in-place)"""
+    result = arr.copy()
+    for i in range(len(result) - 1, 0, -1):
+        j = rng.randint(0, i)
+        result[i], result[j] = result[j], result[i]
+    return result
+
+def sort_key_shuffle(arr: List[Any], rng: random.Random) -> List[Any]:
+    """Сортировка по случайному ключу"""
+    return sorted(arr, key=lambda x: rng.random())
+
+def builtin_shuffle(arr: List[Any], rng: random.Random) -> List[Any]:
+    """Использование встроенного random.shuffle (in-place)"""
+    result = arr.copy()
+    rng.shuffle(result)
+    return result
+
+ALGORITHMS = {
+    '1': {'name': 'Fisher-Yates (оптимальный)', 'func': fisher_yates_shuffle},
+    '2': {'name': 'Сортировка случайным ключом', 'func': sort_key_shuffle},
+    '3': {'name': 'Встроенный (стандартный)', 'func': builtin_shuffle},
+}
+
+# ========== СТАТИСТИКА ==========
+def count_inversions(arr: List[Any]) -> int:
+    """Количество инверсий (показатель случайности)"""
+    inversions = 0
+    for i in range(len(arr)):
+        for j in range(i + 1, len(arr)):
+            if arr[i] > arr[j]:
+                inversions += 1
+    return inversions
+
+def entropy(arr: List[Any]) -> float:
+    """Энтропия распределения (для числовых списков)"""
+    if not arr or not isinstance(arr[0], (int, float)):
+        return 0.0
+    n = len(arr)
+    if n == 0:
+        return 0.0
+    # Нормализация для сравнения (диапазон)
+    min_val = min(arr)
+    max_val = max(arr)
+    if max_val == min_val:
+        return 0.0
+    # Дискретизация на 10 корзин
+    bins = 10
+    hist = [0] * bins
+    for x in arr:
+        idx = int((x - min_val) / (max_val - min_val) * bins)
+        if idx == bins:
+            idx = bins - 1
+        hist[idx] += 1
+    # Энтропия
+    ent = 0.0
+    for count in hist:
+        if count > 0:
+            p = count / n
+            ent -= p * math.log2(p)
+    return ent
+
+def get_stats(arr: List[Any]) -> dict:
+    return {
+        'length': len(arr),
+        'inversions': count_inversions(arr),
+        'entropy': entropy(arr),
+    }
+
+# ========== ВВОД/ВЫВОД ==========
+def parse_list(input_str: str) -> List[Any]:
+    """Парсит строку в список (поддерживает числа и строки)"""
+    items = [item.strip() for item in input_str.split(',') if item.strip()]
+    # Пробуем преобразовать в числа
+    parsed = []
+    for item in items:
+        try:
+            parsed.append(int(item))
+        except ValueError:
+            try:
+                parsed.append(float(item))
+            except ValueError:
+                parsed.append(item)
+    return parsed
+
+def format_list(arr: List[Any]) -> str:
+    return '[' + ', '.join(str(x) for x in arr) + ']'
+
+def export_json(arr: List[Any], filename: str):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(arr, f, indent=2, ensure_ascii=False)
+
+def export_csv(arr: List[Any], filename: str):
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['value'])
+        for item in arr:
+            writer.writerow([item])
+
+def import_list(filename: str) -> List[Any]:
+    with open(filename, 'r', encoding='utf-8') as f:
+        if filename.endswith('.json'):
+            return json.load(f)
+        else:
+            # CSV
+            reader = csv.reader(f)
+            rows = list(reader)
+            if len(rows) == 1 and len(rows[0]) > 1:
+                # Возможно, строка с разделителями
+                return parse_list(','.join(rows[0]))
+            else:
+                return [row[0] for row in rows if row]
+
+def generate_random_list(size: int, min_val: int = 0, max_val: int = 100) -> List[int]:
+    return [random.randint(min_val, max_val) for _ in range(size)]
+
+# ========== ОСНОВНАЯ ЛОГИКА ==========
+def interactive():
+    print("🎲 ПЕРЕМЕШИВАТЕЛЬ СПИСКОВ")
+    print("Введите список (через запятую):")
+    input_str = input("> ").strip()
+    if not input_str:
+        print("Список пуст. Сгенерируем случайный.")
+        size = int(input("Размер случайного списка: ") or "10")
+        data = generate_random_list(size)
+        print(f"Сгенерированный список: {format_list(data)}")
+    else:
+        data = parse_list(input_str)
+        print(f"Исходный список: {format_list(data)}")
+
+    # Выбор алгоритма
+    print("\nВыберите алгоритм:")
+    for key, alg in ALGORITHMS.items():
+        print(f"{key}. {alg['name']}")
+    algo_choice = input("Ваш выбор (по умолчанию 1): ").strip() or '1'
+    if algo_choice not in ALGORITHMS:
+        algo_choice = '1'
+    algorithm = ALGORITHMS[algo_choice]['func']
+
+    # Seed
+    seed_input = input("Введите seed (или оставьте пустым для случайного): ").strip()
+    if seed_input:
+        try:
+            seed = int(seed_input)
+            rng = random.Random(seed)
+        except ValueError:
+            rng = random.Random()
+    else:
+        rng = random.Random()
+
+    # Перемешивание
+    shuffled = algorithm(data, rng)
+    print(f"\nПеремешанный список: {format_list(shuffled)}")
+
+    # Статистика
+    stats = get_stats(shuffled)
+    print(f"\n📊 Статистика:")
+    print(f"  Длина: {stats['length']}")
+    print(f"  Инверсий: {stats['inversions']}")
+    print(f"  Энтропия: {stats['entropy']:.4f}")
+
+    # Экспорт
+    export_choice = input("\nЭкспортировать результат? (y/n): ").strip().lower()
+    if export_choice == 'y':
+        fmt = input("Формат (json/csv): ").strip().lower()
+        filename = input("Имя файла: ").strip()
+        if not filename:
+            filename = f"shuffled.{fmt}"
+        if fmt == 'json':
+            export_json(shuffled, filename)
+        else:
+            export_csv(shuffled, filename)
+        print(f"Экспортировано в {filename}")
+
+def cli():
+    parser = argparse.ArgumentParser(description="Перемешиватель списков")
+    parser.add_argument("--list", help="Список через запятую")
+    parser.add_argument("--file", help="Файл для импорта (JSON или CSV)")
+    parser.add_argument("--random", type=int, help="Сгенерировать случайный список указанного размера")
+    parser.add_argument("--algorithm", choices=['1','2','3'], default='1', help="Алгоритм (1-3)")
+    parser.add_argument("--seed", type=int, help="Seed для воспроизводимости")
+    parser.add_argument("--export", help="Экспорт в файл (расширение определит формат)")
+    parser.add_argument("--stats", action="store_true", help="Показать статистику")
+    args = parser.parse_args()
+
+    data = None
+    if args.list:
+        data = parse_list(args.list)
+    elif args.file:
+        data = import_list(args.file)
+    elif args.random:
+        data = generate_random_list(args.random)
+    else:
+        print("Укажите --list, --file или --random")
+        sys.exit(1)
+
+    rng = random.Random(args.seed) if args.seed is not None else random.Random()
+    algorithm = ALGORITHMS[args.algorithm]['func']
+    shuffled = algorithm(data, rng)
+
+    print(f"Исходный список: {format_list(data)}")
+    print(f"Перемешанный список: {format_list(shuffled)}")
+    if args.stats:
+        stats = get_stats(shuffled)
+        print(f"\n📊 Статистика:")
+        print(f"  Длина: {stats['length']}")
+        print(f"  Инверсий: {stats['inversions']}")
+        print(f"  Энтропия: {stats['entropy']:.4f}")
+    if args.export:
+        if args.export.endswith('.json'):
+            export_json(shuffled, args.export)
+        else:
+            export_csv(shuffled, args.export)
+        print(f"Экспортировано в {args.export}")
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        cli()
+    else:
+        interactive()
