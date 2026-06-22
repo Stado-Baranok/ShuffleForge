@@ -1,0 +1,18 @@
+ <div class="result">
+            <p><strong>Исходный список:</strong> <?= formatList($data) ?></p>
+            <p><strong>Перемешанный список:</strong> <?= formatList($shuffled) ?></p>
+            <?php if (isset($_GET['stats'])): 
+                $stats = getStats($shuffled);
+            ?>
+                <div class="stats">
+                    <h4>📊 Статистика:</h4>
+                    <p>Длина: <?= $stats['length'] ?></p>
+                    <p>Инверсий: <?= $stats['inversions'] ?></p>
+                    <p>Энтропия: <?= number_format($stats['entropy'], 4) ?></p>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; endif; ?>
+</div>
+</body>
+</html>
